@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIP Lottery - Avatar Edition</title>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+    
+    <style>
+        :root { --primary: #0984e3; --admin: #d63031; --gold: #fdcb6e; --bg: #000; }
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background: radial-gradient(circle, #2d3436 0%, #000000 100%); 
+            color: white; display: flex; justify-content: center; padding: 20px; min-height: 100vh; margin: 0; overflow-x: hidden;
+        }
+        .card { 
+            background: rgba(255, 255, 255, 0.07); backdrop-filter: blur(15px);
+            padding: 25px; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.8); 
+            width: 100%; max-width: 400px; text-align: center; border: 1px solid rgba(255,255,255,0.1);
+        }
+        .display-area { 
+            background: #111; color: var(--gold); font-size: 5.5rem; font-weight: bold; 
+            padding: 30px; border-radius: 15px; margin: 20px 0; 
+            border: 2px solid var(--gold); text-shadow: 0 0 20px var(--gold);
+        }
+        input { 
+            padding: 14px; border: none; border-radius: 10px; width: 88%; 
+            margin-bottom: 12px; font-size: 1rem; text-align: center; background: #fff; color: #000; outline: none;
+        }
+        .btn { 
+            background: var(--primary); color: white; border: none; padding: 15px; 
+            border-radius: 10px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 10px; transition: 0.2s;
+        }
+        .btn:active { transform: scale(0.95); }
+        .btn-gold { background: var(--gold); color: #000; }
+        .btn-outline { background: transparent; border: 1px solid var(--gold); color: var(--gold); font-size: 0.8rem; }
+        
+        /* Overlay Logic */
+        #authOverlay { position: fixed; top:0; left:0; width:100%; height:100%; background: #000; z-index: 1000; display: flex; justify-content: center; align-items: center; }
+        #registerModal { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.95); z-index: 2000; display: none; justify-content: center; align-items: center; }
+        
+        .coin-box { color: #55efc4; font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; }
+        .admin-box { margin-top: 20px; padding: 15px; border: 1px dashed var(--admin); border-radius: 10px; display: none; background: rgba(214, 48, 49, 0.1); text-align: left; }
+    </style>
+</head>
+<body>
+
+<audio id="bgMusic" loop>
+    <source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3" type="audio/mpeg">
+</audio>
+
+<div id="authOverlay">
+    <div class="card">
+        <h2 style="color: var(--gold)">VIP LOGIN</h2>
+        <input type="text" id="loginId" placeholder="ID Pemain">
+        <input type="password" id="loginPass" placeholder="Password">
+        <button class="btn btn-gold" onclick="login()">MULAI BERMAIN</button>
+        <hr style="opacity: 0.2; margin: 20px 0;">
+        <button class="btn btn-outline" onclick="openRegisterGate()">DAFTAR AKUN (ADMIN ONLY)</button>
+    </div>
+</div>
+
+<div id="registerModal">
+    <div class="card" style="border: 2px solid var(--admin)">
+        <h2 style="color: var(--admin)">BUAT AKUN BARU</h2>
+        <p style="font-size: 0.8rem; margin-top:-10px; color: #ccc;">Saldo awal koin: 0</p>
+        <input type="text" id="newUserId" placeholder="Masukkan ID Baru">
+        <input type="text" id="newUserPass" placeholder="Masukkan Password Baru">
+        <button class="btn" style="background: var(--admin)" onclick="createAccount()">DAFTARKAN SEKARANG</button>
+        <button class="btn btn-outline" onclick="closeRegister()">BATAL / KEMBALI</button>
+    </div>
+</div>
+
+<div class="card">
+    <div id="userStatus" style="font-weight: bold; margin-bottom: 5px; color: #fff;">Pemain: --</div>
+    <div id="coinInfo" class="coin-box">💰 Koin: --</div>
+    
+    <div class="display-area" id="mainNumber">--</div>
+
+    <div id="playerUI">
+        <input type="number" id="userGuess" placeholder="Tebak 1-100">
+        <button class="btn btn-gold" id="btnLock" onclick="lockAnswer()">KUNCI (Biaya 1 Koin)</button>
+    </div>
+
+    <div style="margin-top: 40px; opacity: 0.3; cursor: pointer; font-size: 0.8rem;" onclick="openAdmin()">⚙️ Panel Admin Game</div>
+    
+    <div id="adminSection" class="admin-box">
+        <h3 style="color: var(--admin); margin-top:0; text-align: center;">ADMIN CONTROL</h3>
+        <p><b>Isi Koin Pemain:</b></p>
+        <input type="text" id="targetCoinUser" placeholder="ID Pemain Tujuan">
+        <input type="number" id="amountCoin" placeholder="Jumlah Koin">
+        <button class="btn" style="background: #00b894" onclick="addCoins()">TAMBAH KOIN</button>
+        <hr style="opacity:0.2">
+        <p><b>Kontrol Lotre:</b></p>
+        <input type="number" id="targetNumber" placeholder="Angka Pemenang">
+        <button class="btn" style="background: var(--admin)" onclick="triggerSpin()">PUTAR DI SEMUA HP</button>
+        <button class="btn" style="background: #000" onclick="resetGame()">RESET RONDE</button>
+    </div>
+</div>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyAkeywT1lnLHPLJUnfWGNtsSqiePttpzPo",
+        authDomain: "avatar-lotere.firebaseapp.com",
+        projectId: "avatar-lotere",
+        storageBucket: "avatar-lotere.firebasestorage.app",
+        messagingSenderId: "650747269084",
+        appId: "1:650747269084:web:66ac50e91394fabc694919",
+        measurementId: "G-P619V6M7Z7",
+        databaseURL: "https://avatar-lotere-default-rtdb.firebaseio.com" 
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const PIN_ADMIN = "123456"; 
+    let userData = null;
+    let myGuess = null;
+
+    // --- SISTEM LOGIN & DAFTAR ---
+    function login() {
+        const id = document.getElementById('loginId').value.trim();
+        const pass = document.getElementById('loginPass').value.trim();
+        if(!id || !pass) return alert("Lengkapi ID dan Password!");
+
+        db.ref('users/' + id).once('value', (snap) => {
+            const user = snap.val();
+            if(user && user.password === pass) {
+                userData = { id: id, ...user };
+                document.getElementById('authOverlay').style.display = 'none';
+                document.getElementById('userStatus').textContent = "Pemain: " + id;
+                document.getElementById('bgMusic').play().catch(e => console.log("Audio block"));
+                startGameLogic();
+            } else {
+                alert("ID tidak ditemukan atau Password salah!");
+            }
+        });
+    }
+
+    function openRegisterGate() {
+        const pin = prompt("Hanya Admin yang bisa mendaftar akun.\nMasukkan PIN Admin:");
+        if (pin === PIN_ADMIN) {
+            document.getElementById('registerModal').style.display = 'flex';
+        } else if (pin !== null) {
+            alert("PIN Salah! Akses Ditolak.");
+        }
+    }
+
+    function createAccount() {
+        const id = document.getElementById('newUserId').value.trim();
+        const pass = document.getElementById('newUserPass').value.trim();
+        if(!id || !pass) return alert("Isi ID dan Password baru!");
+        
+        db.ref('users/' + id).set({
+            password: pass,
+            coins: 0 
+        }).then(() => {
+            alert("Akun '" + id + "' Berhasil Didaftarkan!\nSaldo Koin: 0");
+            closeRegister();
+            document.getElementById('newUserId').value = "";
+            document.getElementById('newUserPass').value = "";
+        }).catch(err => alert("Error: " + err.message));
+    }
+
+    function closeRegister() { 
+        document.getElementById('registerModal').style.display = 'none'; 
+    }
+
+    // --- LOGIKA GAME ---
+    function startGameLogic() {
+        // Pantau koin secara real-time
+        db.ref('users/' + userData.id + '/coins').on('value', (snap) => {
+            userData.coins = snap.val() || 0;
+            document.getElementById('coinInfo').textContent = "💰 Koin: " + userData.coins;
+        });
+
+        // Pantau perintah putar/reset
+        db.ref('roomControl').on('value', (snap) => {
+            const data = snap.val();
+            if(data && data.action === 'SPIN') startGlobalSpin(data.result);
+            if(data && data.action === 'RESET') location.reload();
+        });
+    }
+
+    function lockAnswer() {
+        const guess = document.getElementById('userGuess').value;
+        if (!guess || guess < 1 || guess > 100) return alert("Masukkan angka 1-100!");
+        if (userData.coins < 1) return alert("Koin Anda 0! Minta Admin untuk isi koin.");
+
+        myGuess = guess;
+        // Potong 1 koin
+        db.ref('users/' + userData.id).update({ coins: userData.coins - 1 });
+        db.ref('guesses/' + userData.id).set({ name: userData.id, guess: guess });
+
+        document.getElementById('userGuess').disabled = true;
+        document.getElementById('btnLock').disabled = true;
+        document.getElementById('userStatus').textContent = "Tebakan Anda: " + myGuess;
+        document.getElementById('userStatus').style.color = var(--gold);
+    }
+
+    // --- LOGIKA PANEL ADMIN ---
+    function openAdmin() {
+        if (prompt("Masukkan PIN Admin:") === PIN_ADMIN) {
+            document.getElementById('adminSection').style.display = 'block';
+            window.scrollTo(0, document.body.scrollHeight);
+        }
+    }
+
+    function addCoins() {
+        const id = document.getElementById('targetCoinUser').value.trim();
+        const amount = parseInt(document.getElementById('amountCoin').value);
+        if(!id || isNaN(amount)) return alert("Masukkan ID Pemain dan Jumlah Koin!");
+        
+        db.ref('users/' + id).once('value', (snap) => {
+            if(!snap.exists()) return alert("ID Pemain '" + id + "' tidak ditemukan!");
+            const current = snap.val().coins || 0;
+            db.ref('users/' + id).update({ coins: current + amount });
+            alert("Berhasil! " + id + " ditambah " + amount + " koin.");
+        });
+    }
+
+    function triggerSpin() {
+        const target = document.getElementById('targetNumber').value;
+        if(!target) return alert("Tentukan dulu angka yang akan keluar!");
+        db.ref('roomControl').set({ action: 'SPIN', result: parseInt(target) });
+    }
+
+    function startGlobalSpin(final) {
+        const display = document.getElementById('mainNumber');
+        const status = document.getElementById('userStatus');
+        let counter = 0;
+        const interval = setInterval(() => {
+            display.textContent = Math.floor(Math.random() * 100) + 1;
+            counter++;
+            if (counter > 40) {
+                clearInterval(interval);
+                display.textContent = final;
+                if (myGuess) {
+                    const win = parseInt(myGuess) === final;
+                    status.textContent = win ? "JACKPOT! +10 Koin 🎉" : "ANDA KALAH! ❌";
+                    if(win) {
+                        db.ref('users/' + userData.id).update({ coins: userData.coins + 10 });
+                        status.style.color = "#55efc4";
+                    } else {
+                        status.style.color = var(--admin);
+                    }
+                }
+            }
+        }, 50);
+    }
+
+    function resetGame() {
+        if(confirm("Hapus semua tebakan untuk ronde baru?")) {
+            db.ref('guesses').remove();
+            db.ref('roomControl').set({ action: 'RESET' });
+        }
+    }
+</script>
+</body>
+</html>
