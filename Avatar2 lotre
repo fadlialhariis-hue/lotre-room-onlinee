@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lotre VIP Sempurna</title>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #1a1a1a; color: white; text-align: center; padding: 20px; }
+        .box { background: #333; padding: 20px; border-radius: 15px; max-width: 350px; margin: auto; border: 2px solid gold; }
+        input { width: 80%; padding: 10px; margin: 10px 0; border-radius: 5px; border: none; }
+        button { width: 85%; padding: 12px; margin: 5px; border-radius: 5px; border: none; cursor: pointer; font-weight: bold; }
+        .btn-blue { background: #0984e3; color: white; }
+        .btn-gold { background: #fdcb6e; color: black; }
+        .btn-red { background: #d63031; color: white; }
+        #gamePage, #adminPanel { display: none; }
+        .angka { font-size: 5rem; font-weight: bold; color: gold; margin: 20px 0; }
+    </style>
+</head>
+<body>
+
+<div id="loginPage" class="box">
+    <h2>LOGIN LOTRE</h2>
+    <input type="text" id="idPemain" placeholder="ID Pemain">
+    <input type="password" id="passPemain" placeholder="Password">
+    <button class="btn-gold" onclick="prosesLogin()">MASUK</button>
+    <hr>
+    <button style="background: #555; color: white; font-size: 0.7rem;" onclick="prosesDaftar()">DAFTAR AKUN BARU (ADMIN)</button>
+</div>
+
+<div id="gamePage" class="box">
+    <h3 id="namaPemain">User: -</h3>
+    <h3 id="koinPemain" style="color: #55efc4;">Koin: 0</h3>
+    <div class="angka" id="layarAngka">--</div>
+    <input type="number" id="tebakan" placeholder="Tebak 1-100">
+    <button class="btn-gold" id="btnKunci" onclick="kunciJawaban()">KUNCI (1 KOIN)</button>
+    <br><br>
+    <div style="cursor:pointer; opacity: 0.3;" onclick="bukaAdmin()">⚙️ Panel Admin</div>
+</div>
+
+<div id="adminPanel" class="box" style="margin-top: 20px; border-color: red;">
+    <h3>KONTROL ADMIN</h3>
+    <input type="text" id="idKoin" placeholder="ID Pemain">
+    <input type="number" id="jmlKoin" placeholder="Jumlah Koin">
+    <button class="btn-blue" onclick="tambahKoin()">ISI KOIN</button>
+    <hr>
+    <input type="number" id="angkaTarget" placeholder="Hasil Putaran">
+    <button class="btn-red" onclick="putarSekarang()">PUTAR DI SEMUA HP</button>
+    <button class="btn-red" style="background:black" onclick="resetRonde()">RESET RONDE</button>
+</div>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyAkeywT1lnLHPLJUnfWGNtsSqiePttpzPo",
+        authDomain: "avatar-lotere.firebaseapp.com",
+        projectId: "avatar-lotere",
+        databaseURL: "https://avatar-lotere-default-rtdb.firebaseio.com" 
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const PIN = "#har142000";
+    let userSekarang = null;
+    let infoUser = null;
+
+    // FUNGSI DAFTAR
+    function prosesDaftar() {
+        if(prompt("Masukkan PIN Admin:") !== PIN) return alert("Salah!");
+        let id = document.getElementById('idPemain').value;
+        let ps = document.getElementById('passPemain').value;
+        if(!id || !ps) return alert("Isi ID & Pass di kolom login dulu!");
+        
+        db.ref('users/' + id).set({ password: ps, coins: 0 }).then(() => {
+            alert("Akun " + id + " Berhasil Dibuat! Silakan klik MASUK.");
+        });
+    }
+
+    // FUNGSI LOGIN
+    function prosesLogin() {
+        let id = document.getElementById('idPemain').value;
+        let ps = document.getElementById('passPemain').value;
+        
+        db.ref('users/' + id).once('value', (s) => {
+            let data = s.val();
+            if(data && data.password === ps) {
+                userSekarang = id;
+                infoUser = data;
+                document.getElementById('loginPage').style.display = 'none';
+                document.getElementById('gamePage').style.display = 'block';
+                document.getElementById('namaPemain').innerText = "User: " + id;
+                mulaiPantauData();
+            } else {
+                alert("Salah ID atau Password!");
+            }
+        });
+    }
+
+    function mulaiPantauData() {
+        db.ref('users/' + userSekarang + '/coins').on('value', (s) => {
+            document.getElementById('koinPemain').innerText = "Koin: " + (s.val() || 0);
+            infoUser.coins = s.val() || 0;
+        });
+        db.ref('roomControl').on('value', (s) => {
+            let d = s.val();
+            if(d && d.action === 'SPIN') animasiPutar(d.result);
+            if(d && d.action === 'RESET') location.reload();
+        });
+    }
+
+    function kunciJawaban() {
+        let t = document.getElementById('tebakan').value;
+        if(!t || infoUser.coins < 1) return alert("Koin habis atau angka kosong!");
+        
+        db.ref('users/' + userSekarang).update({ coins: infoUser.coins - 1 });
+        db.ref('guesses/' + userSekarang).set({ name: userSekarang, guess: t });
+        
+        document.getElementById('btnKunci').disabled = true;
+        document.getElementById('btnKunci').innerText = "TERKUNCI: " + t;
+    }
+
+    function bukaAdmin() {
+        if(prompt("PIN Admin:") === PIN) document.getElementById('adminPanel').style.display = 'block';
+    }
+
+    function tambahKoin() {
+        let id = document.getElementById('idKoin').value;
+        let jm = parseInt(document.getElementById('jmlKoin').value);
+        db.ref('users/' + id + '/coins').once('value', (s) => {
+            let skrg = s.val() || 0;
+            db.ref('users/' + id).update({ coins: skrg + jm });
+            alert("Koin berhasil ditambah!");
+        });
+    }
+
+    function putarSekarang() {
+        let res = document.getElementById('angkaTarget').value;
+        db.ref('roomControl').set({ action: 'SPIN', result: parseInt(res) });
+    }
+
+    function animasiPutar(hasil) {
+        let lay = document.getElementById('layarAngka');
+        let c = 0;
+        let inv = setInterval(() => {
+            lay.innerText = Math.floor(Math.random() * 100);
+            c++;
+            if(c > 30) {
+                clearInterval(inv);
+                lay.innerText = hasil;
+                let t = document.getElementById('tebakan').value;
+                if(t == hasil) {
+                    alert("MENANG!");
+                    db.ref('users/' + userSekarang).update({ coins: infoUser.coins + 10 });
+                }
+            }
+        }, 50);
+    }
+
+    function resetRonde() {
+        db.ref('guesses').remove();
+        db.ref('roomControl').set({ action: 'RESET' });
+    }
+</script>
+</body>
+</html>
